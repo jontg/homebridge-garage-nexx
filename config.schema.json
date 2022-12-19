@@ -9,7 +9,7 @@
         "title": "Name",
         "type": "string",
         "required": true,
-        "default": "Example Dynamic Platform"
+        "default": "Nexx Garage"
       },
       "auth": {
         "description": "See https://github.com/tget4/nexx-garage-sdk/blob/master/src/NexxApiClient.ts#L7",
