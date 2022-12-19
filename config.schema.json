@@ -38,8 +38,7 @@
         "required": [
           "username",
           "password",
-          "clientId",
-          "deviceToken"
+          "clientId"
         ]
       }
     }
