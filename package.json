@@ -1,7 +1,7 @@
 {
   "displayName": "Homebridge Garage Plugin for Nexx",
   "name": "homebridge-garage-nexx",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Directly integrate NXG controllers with HomeKit.",
   "license": "Apache-2.0",
   "repository": {
