@@ -52,7 +52,7 @@ When you are ready to publish the plugin you should set `private` to false, or r
 Open the [`src/settings.ts`](./src/settings.ts) file and change the default values:
 
 * `PLATFORM_NAME` - Set this to be the name of your platform. This is the name of the platform that users will use to register the plugin in the Homebridge `config.json`.
-* `PLUGIN_NAME` - Set this to be the same name you set in the [`package.json`](./package.json) file. 
+* `PLUGIN_NAME` - Set this to be the same name you set in the [`package.json`](./package.json) file.
 
 Open the [`config.schema.json`](./config.schema.json) file and change the following attribute:
 
@@ -114,7 +114,7 @@ This will launch an instance of Homebridge in debug mode which will restart ever
 You can now start customising the plugin template to suit your requirements.
 
 * [`src/platform.ts`](./src/platform.ts) - this is where your device setup and discovery should go.
-* [`src/platformAccessory.ts`](./src/platformAccessory.ts) - this is where your accessory control logic should go, you can rename or create multiple instances of this file for each accessory type you need to implement as part of your platform plugin. You can refer to the [developer documentation](https://developers.homebridge.io/) to see what characteristics you need to implement for each service type.
+* [`src/nxg200.ts`](./src/nxg200.ts) - this is where your accessory control logic should go, you can rename or create multiple instances of this file for each accessory type you need to implement as part of your platform plugin. You can refer to the [developer documentation](https://developers.homebridge.io/) to see what characteristics you need to implement for each service type.
 * [`config.schema.json`](./config.schema.json) - update the config schema to match the config you expect from the user. See the [Plugin Config Schema Documentation](https://developers.homebridge.io/#/config-schema).
 
 ## Versioning Your Plugin

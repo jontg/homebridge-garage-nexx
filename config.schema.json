@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "HomebridgeGarageNexx",
   "pluginType": "platform",
   "singular": true,
   "schema": {
@@ -10,6 +10,37 @@
         "type": "string",
         "required": true,
         "default": "Example Dynamic Platform"
+      },
+      "auth": {
+        "description": "See https://github.com/tget4/nexx-garage-sdk/blob/master/src/NexxApiClient.ts#L7",
+        "title": "Authentication",
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "deviceToken": {
+            "type": "string"
+          },
+          "grantType": {
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "clientId",
+          "deviceToken"
+        ]
       }
     }
   }
