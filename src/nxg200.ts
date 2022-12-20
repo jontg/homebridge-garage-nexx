@@ -64,6 +64,8 @@ export class NXG200 {
         if (this.state.currentStatus !== device.DeviceStatus) {
           this.platform.log.info('State change detected outside of HomeKit:', JSON.stringify(device));
           this.state.currentStatus = device.DeviceStatus;
+          this.state.targetStatus = device.DeviceStatus;
+          this.state.isBlocked = device.DeviceStatus !== GarageDoorState.Closed && device.DeviceStatus !== GarageDoorState.Open;
         }
       }
     }, 60_000);
@@ -97,6 +99,7 @@ export class NXG200 {
 
         this.state.isBlocked = false;
       } else {
+        this.platform.log.info(`Door detected ${device.DeviceStatus} but target value is ${value} - blocked!`);
         this.state.isBlocked = true;
       }
 
@@ -135,8 +138,8 @@ export class NXG200 {
   }
 
   private deviceStatusMatchesState(deviceState: GarageDoorState, homekitState: CharacteristicValue): boolean {
-    const homekitIsOpen = homekitState === this.platform.Characteristic.TargetDoorState.OPEN ||
-      homekitState === this.platform.Characteristic.CurrentDoorState.OPEN;
-    return (deviceState !== GarageDoorState.Open) === !homekitIsOpen;
+    const homekitIsOpen = (homekitState === this.platform.Characteristic.TargetDoorState.OPEN) ||
+      (homekitState === this.platform.Characteristic.CurrentDoorState.OPEN);
+    return (deviceState === GarageDoorState.Open) === homekitIsOpen;
   }
 }
