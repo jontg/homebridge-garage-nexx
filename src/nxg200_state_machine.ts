@@ -7,10 +7,10 @@ export const FSM = StateMachine.factory({
   init: 'closed',
 
   transitions: [
-    { name: 'open',   from: ['stuck',   'closed'],  to: 'open'   },
-    { name: 'close',  from: ['stuck',   'open'],    to: 'closed' },
-    { name: 'stuck',  from: ['opening', 'closing'], to: 'stuck'  },
+    { name: 'open',  from: ['stuck',   'closed'], to: 'open'   },
+    { name: 'close', from: ['stuck',   'open'],   to: 'closed' },
 
+    { name: 'stuck',        from: '*', to: 'stuck' },
     { name: 'resetOpen',    from: '*', to: 'open'  },
     { name: 'resetClosed',  from: '*', to: 'closed'},
   ],

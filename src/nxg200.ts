@@ -1,7 +1,7 @@
 import {Service, PlatformAccessory, CharacteristicValue} from 'homebridge';
 
-import { NexxHomebridgePlatform } from './platform';
-import { FSM } from './nxg200_state_machine';
+import {NexxHomebridgePlatform} from './platform';
+import {FSM} from './nxg200_state_machine';
 
 enum GarageDoorState {
   Open = 1,
@@ -58,7 +58,7 @@ export class NXG200 {
     setInterval(async () => {
       platform.log.debug(`Checking on the status of (${this.fsm})`);
       if (!this.fsm.isTransitioning()) {
-        const { Result: device } = await platform.nexxApiClient.getDeviceState(this.fsm.deviceId);
+        const {Result: device} = await platform.nexxApiClient.getDeviceState(this.fsm.deviceId);
         platform.log.debug(`Status from the API is ${JSON.stringify({DeviceStatus: device.DeviceStatus})}`);
 
         if (this.fsm.state === 'open' && device.DeviceStatus !== GarageDoorState.Open) {
@@ -66,7 +66,7 @@ export class NXG200 {
         } else if (this.fsm.state === 'closed' && device.DeviceStatus !== GarageDoorState.Closed) {
           this.resetDeviceState(device);
         } else if (this.fsm.state === 'stuck' &&
-            (device.DeviceStatus === GarageDoorState.Open || device.DeviceStatus === GarageDoorState.Closed)) {
+          (device.DeviceStatus === GarageDoorState.Open || device.DeviceStatus === GarageDoorState.Closed)) {
           this.resetDeviceState(device);
         }
       }
@@ -74,7 +74,6 @@ export class NXG200 {
   }
 
   private resetDeviceState(device: Device) {
-    this.platform.log.info(`Resetting device state; FSM ${this.fsm}, Device (${device.DeviceStatus}, ${device.LastOperationTimestamp})`);
     this.fsm.lastTransition = new Date(device.LastOperationTimestamp).getTime();
 
     switch (device.DeviceStatus) {
@@ -89,6 +88,8 @@ export class NXG200 {
         this.fsm.resetClosed();
         break;
       default:
+        this.platform.log.info(`Failed to understand... STUCK ${device.DeviceStatus}; FSM ${this.fsm}, ` +
+          `Device (${device.DeviceStatus}, ${device.LastOperationTimestamp})`);
         this.fsm.stuck();
     }
   }
@@ -102,7 +103,11 @@ export class NXG200 {
       if (value === this.platform.Characteristic.TargetDoorState.OPEN) {
         this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
           this.platform.Characteristic.CurrentDoorState.OPENING);
-        await this.fsm.open();
+        if (this.fsm.can('open')) {
+          await this.fsm.open();
+        } else {
+          this.platform.log.warn(`Attempting to transition to OPEN but ${this.fsm}`);
+        }
         setTimeout(
           () => {
             this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
@@ -112,7 +117,11 @@ export class NXG200 {
       } else {
         this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
           this.platform.Characteristic.CurrentDoorState.CLOSING);
-        await this.fsm.close();
+        if (this.fsm.can('close')) {
+          await this.fsm.close();
+        } else {
+          this.platform.log.warn(`Attempting to transition to close but ${this.fsm}`);
+        }
         setTimeout(
           () => {
             this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
@@ -130,7 +139,7 @@ export class NXG200 {
 
   async getTargetDoorState(): Promise<CharacteristicValue> {
     this.platform.log.debug(`Get Target Door State -> ${this.fsm}`);
-    switch(this.fsm.state) {
+    switch (this.fsm.state) {
       case 'open':
         return this.platform.Characteristic.TargetDoorState.OPEN;
       case 'closed':
@@ -142,7 +151,7 @@ export class NXG200 {
 
   async getCurrentDoorState(): Promise<CharacteristicValue> {
     this.platform.log.debug(`Get Current Door State -> ${this.fsm}`);
-    switch(this.fsm.state) {
+    switch (this.fsm.state) {
       case 'open':
         return this.fsm.isTransitioning()
           ? this.platform.Characteristic.CurrentDoorState.OPENING
