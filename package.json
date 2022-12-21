@@ -23,7 +23,10 @@
     "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "nexx-garage",
+    "nxg-200",
+    "nxg-300"
   ],
   "devDependencies": {
     "@types/node": "^16.10.9",
