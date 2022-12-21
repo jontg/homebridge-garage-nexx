@@ -75,7 +75,7 @@ export class NXG200 {
 
   private resetDeviceState(device: Device) {
     this.platform.log.info(`Resetting device state; FSM ${this.fsm}, Device (${device.DeviceStatus}, ${device.LastOperationTimestamp})`);
-    this.fsm.lastTransition = new Date(device.LastOperationTimestamp).getDate();
+    this.fsm.lastTransition = new Date(device.LastOperationTimestamp).getTime();
 
     switch (device.DeviceStatus) {
       case GarageDoorState.Open:
