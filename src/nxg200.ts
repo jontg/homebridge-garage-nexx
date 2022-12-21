@@ -1,145 +1,163 @@
 import {Service, PlatformAccessory, CharacteristicValue} from 'homebridge';
 
 import { NexxHomebridgePlatform } from './platform';
+import { FSM } from './nxg200_state_machine';
 
 enum GarageDoorState {
   Open = 1,
   Closed = 2,
 }
 
+interface Device {
+  DeviceId: string;
+  DeviceNickName: string;
+  DeviceStatus: GarageDoorState;
+  LastOperationTimestamp: string;
+  ProductCode: string;
+}
+
+
 export class NXG200 {
-  private readonly deviceId: string;
   private readonly service: Service;
-
-  private DEFAULT_OPEN_TIME = 30_000; // 30 seconds
-
-  private state = {
-    currentStatus: GarageDoorState.Closed,
-    targetStatus: GarageDoorState.Closed,
-    isTransitioning: false,
-    isBlocked: false,
-    statusCause: 'Default',
-    statusTime: new Date(Date.now()),
-  };
+  private readonly fsm;
 
   constructor(
     private readonly platform: NexxHomebridgePlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    this.deviceId = accessory.context.device.DeviceId;
-    this.state.currentStatus = accessory.context.device.DeviceStatus;
-    this.state.targetStatus = accessory.context.device.DeviceStatus;
-    this.state.statusCause = accessory.context.device.DeviceStatusName;
-    this.state.statusTime = new Date(accessory.context.device.LastOperationTimestamp);
+    const device: Device = accessory.context.device;
+    this.fsm = new FSM();
+    this.fsm.deviceId = device.DeviceId;
+    this.fsm.log = platform.log;
+    this.fsm.platformUUID = accessory.UUID;
+    this.fsm.nexxApiClient = platform.nexxApiClient;
+    this.resetDeviceState(device);
 
     // create a new Garage Door Opener service
-    this.service = this.accessory.getService(this.platform.Service.GarageDoorOpener) ||
-      this.accessory.addService(this.platform.Service.GarageDoorOpener);
+    this.service = accessory.getService(platform.Service.GarageDoorOpener) ||
+      accessory.addService(platform.Service.GarageDoorOpener);
 
-    this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Nexx')
-      .setCharacteristic(this.platform.Characteristic.Model, accessory.context.device.ProductCode)
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.device.DeviceId);
+    accessory.getService(platform.Service.AccessoryInformation)!
+      .setCharacteristic(platform.Characteristic.Manufacturer, 'Nexx')
+      .setCharacteristic(platform.Characteristic.Model, device.ProductCode)
+      .setCharacteristic(platform.Characteristic.SerialNumber, device.DeviceId);
 
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.DeviceNickName);
+    this.service.setCharacteristic(platform.Characteristic.Name, device.DeviceNickName);
 
     // create handlers for required characteristics
-    this.service.getCharacteristic(this.platform.Characteristic.CurrentDoorState)
+    this.service.getCharacteristic(platform.Characteristic.CurrentDoorState)
       .onGet(this.getCurrentDoorState.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.TargetDoorState)
+    this.service.getCharacteristic(platform.Characteristic.TargetDoorState)
       .onGet(this.getTargetDoorState.bind(this))
       .onSet(this.setTargetDoorState.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.ObstructionDetected)
+    this.service.getCharacteristic(platform.Characteristic.ObstructionDetected)
       .onGet(this.getObstructionDetected.bind(this));
 
     setInterval(async () => {
-      this.platform.log.debug(`Checking on the status of ${this.deviceId}`);
-      if (this.state.isTransitioning) {
-        this.platform.log.debug(`${this.deviceId} is transitioning to ${this.state.targetStatus}`);
-      } else {
-        const { Result: device } = await this.platform.nexxApiClient.getDeviceState(this.deviceId);
-        this.platform.log.debug(`${this.deviceId} reported ${device.DeviceStatus}; we see state ${JSON.stringify(this.state)}`);
-        if (this.state.currentStatus !== device.DeviceStatus) {
-          this.platform.log.info('State change detected outside of HomeKit:', JSON.stringify(device));
-          this.state.currentStatus = device.DeviceStatus;
-          this.state.targetStatus = device.DeviceStatus;
-          this.state.isBlocked = device.DeviceStatus !== GarageDoorState.Closed && device.DeviceStatus !== GarageDoorState.Open;
+      platform.log.debug(`Checking on the status of (${this.fsm})`);
+      if (!this.fsm.isTransitioning()) {
+        const { Result: device } = await platform.nexxApiClient.getDeviceState(this.fsm.deviceId);
+        platform.log.debug(`Status from the API is ${JSON.stringify({DeviceStatus: device.DeviceStatus})}`);
+
+        if (this.fsm.state === 'open' && device.DeviceStatus !== GarageDoorState.Open) {
+          this.resetDeviceState(device);
+        } else if (this.fsm.state === 'closed' && device.DeviceStatus !== GarageDoorState.Closed) {
+          this.resetDeviceState(device);
+        } else if (this.fsm.state === 'stuck' &&
+            (device.DeviceStatus === GarageDoorState.Open || device.DeviceStatus === GarageDoorState.Closed)) {
+          this.resetDeviceState(device);
         }
       }
     }, 60_000);
+  }
+
+  private resetDeviceState(device: Device) {
+    this.platform.log.info(`Resetting device state; FSM ${this.fsm}, Device (${device.DeviceStatus}, ${device.LastOperationTimestamp})`);
+    this.fsm.lastTransition = new Date(device.LastOperationTimestamp).getDate();
+
+    switch (device.DeviceStatus) {
+      case GarageDoorState.Open:
+        this.platform.log.info(`Resetting device state to OPEN ${device.DeviceStatus}; FSM ${this.fsm}, ` +
+          `Device (${device.DeviceStatus}, ${device.LastOperationTimestamp})`);
+        this.fsm.resetOpen();
+        break;
+      case GarageDoorState.Closed:
+        this.platform.log.info(`Resetting device state to CLOSED ${device.DeviceStatus}; FSM ${this.fsm}, ` +
+          `Device (${device.DeviceStatus}, ${device.LastOperationTimestamp})`);
+        this.fsm.resetClosed();
+        break;
+      default:
+        this.fsm.stuck();
+    }
   }
 
   /**
    * Handle "SET" requests from HomeKit
    */
   async setTargetDoorState(value: CharacteristicValue) {
-    if (this.state.isTransitioning) {
-      this.platform.log.debug(`Trying to set ${value} but already transitioning to ${this.state.targetStatus}`);
-      return;
-    }
-    this.platform.log.debug('Set Target Door State -> ', value);
-    this.state.isTransitioning = true;
-    if (value === this.platform.Characteristic.TargetDoorState.OPEN) {
-      this.state.targetStatus = GarageDoorState.Open;
-      await this.platform.nexxApiClient.open(this.deviceId, {AppVersion: '3.8.2', MobileDeviceUUID: this.accessory.UUID});
-    } else {
-      this.state.targetStatus = GarageDoorState.Closed;
-      await this.platform.nexxApiClient.close(this.deviceId, {AppVersion: '3.8.2', MobileDeviceUUID: this.accessory.UUID});
-    }
-
-    setTimeout(async () => {
-      const device = await this.platform.nexxApiClient.getDeviceState(this.deviceId);
-
-      this.platform.log.debug('Door State finished ', value, this.deviceStatusMatchesState(device.DeviceStatus, value));
-
-      if (this.deviceStatusMatchesState(device.DeviceStatus, value)) {
-        this.state.currentStatus = this.state.targetStatus;
-
-        this.state.isBlocked = false;
+    this.platform.log.debug(`Set Target Door State -> ${value} (${this.fsm})`);
+    try {
+      if (value === this.platform.Characteristic.TargetDoorState.OPEN) {
+        this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
+          this.platform.Characteristic.CurrentDoorState.OPENING);
+        await this.fsm.open();
+        setTimeout(
+          () => {
+            this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
+              this.platform.Characteristic.CurrentDoorState.OPEN);
+            this.platform.log.debug('Transitioned successfully to OPEN');
+          }, 12_000);
       } else {
-        this.platform.log.info(`Door detected ${device.DeviceStatus} but target value is ${value} - blocked!`);
-        this.state.isBlocked = true;
+        this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
+          this.platform.Characteristic.CurrentDoorState.CLOSING);
+        await this.fsm.close();
+        setTimeout(
+          () => {
+            this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
+              this.platform.Characteristic.CurrentDoorState.CLOSED);
+            this.platform.log.debug('Transitioned successfully to CLOSED');
+          }, 12_000);
       }
-
-      this.state.isTransitioning = false;
-    }, this.DEFAULT_OPEN_TIME);
+    } catch (e) {
+      this.platform.log.error(`Problem detected attempting to change ${this.fsm} -> `, e);
+      this.fsm.stuck();
+      this.service.setCharacteristic(this.platform.Characteristic.CurrentDoorState,
+        this.platform.Characteristic.CurrentDoorState.STOPPED);
+    }
   }
 
   async getTargetDoorState(): Promise<CharacteristicValue> {
-    this.platform.log.debug('Get Target Door State -> ', this.state.targetStatus);
-
-    return this.state.targetStatus === GarageDoorState.Open
-      ? this.platform.Characteristic.TargetDoorState.OPEN
-      : this.platform.Characteristic.TargetDoorState.CLOSED;
+    this.platform.log.debug(`Get Target Door State -> ${this.fsm}`);
+    switch(this.fsm.state) {
+      case 'open':
+        return this.platform.Characteristic.TargetDoorState.OPEN;
+      case 'closed':
+        return this.platform.Characteristic.TargetDoorState.CLOSED;
+      default:
+        return this.platform.Characteristic.TargetDoorState.CLOSED;
+    }
   }
 
   async getCurrentDoorState(): Promise<CharacteristicValue> {
-    this.platform.log.debug('Get Current Door State -> ', this.state.currentStatus);
-
-    if (this.state.currentStatus === this.state.targetStatus) {
-      return this.state.targetStatus === GarageDoorState.Open
-        ? this.platform.Characteristic.CurrentDoorState.OPEN
-        : this.platform.Characteristic.CurrentDoorState.CLOSED;
-    } else if (!this.state.isBlocked) {
-      return this.state.targetStatus === GarageDoorState.Open
-        ? this.platform.Characteristic.CurrentDoorState.OPENING
-        : this.platform.Characteristic.CurrentDoorState.CLOSING;
-    } else {
-      return this.platform.Characteristic.CurrentDoorState.STOPPED;
+    this.platform.log.debug(`Get Current Door State -> ${this.fsm}`);
+    switch(this.fsm.state) {
+      case 'open':
+        return this.fsm.isTransitioning()
+          ? this.platform.Characteristic.CurrentDoorState.OPENING
+          : this.platform.Characteristic.CurrentDoorState.OPEN;
+      case 'closed':
+        return this.fsm.isTransitioning()
+          ? this.platform.Characteristic.CurrentDoorState.CLOSING
+          : this.platform.Characteristic.CurrentDoorState.CLOSED;
+      default:
+        return this.platform.Characteristic.CurrentDoorState.STOPPED;
     }
   }
 
   async getObstructionDetected(): Promise<CharacteristicValue> {
-    this.platform.log.debug('Get Obstruction Detected -> ', this.state.isBlocked);
-
-    return this.state.isBlocked;
-  }
-
-  private deviceStatusMatchesState(deviceState: GarageDoorState, homekitState: CharacteristicValue): boolean {
-    const homekitIsOpen = (homekitState === this.platform.Characteristic.TargetDoorState.OPEN) ||
-      (homekitState === this.platform.Characteristic.CurrentDoorState.OPEN);
-    return (deviceState === GarageDoorState.Open) === homekitIsOpen;
+    this.platform.log.debug('Get Obstruction -> ', this.fsm.toString());
+    return this.fsm.state === 'stuck';
   }
 }
