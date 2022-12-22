@@ -59,17 +59,17 @@ export class NXG200 {
       platform.log.debug(`Checking on the status of (${this.fsm})`);
       if (!this.fsm.isTransitioning()) {
         try {
-        const {Result: device} = await platform.nexxApiClient.getDeviceState(this.fsm.deviceId);
-        platform.log.debug(`Status from the API is ${JSON.stringify({DeviceStatus: device.DeviceStatus})}`);
+          const {Result: device} = await platform.nexxApiClient.getDeviceState(this.fsm.deviceId);
+          platform.log.debug(`Status from the API is ${JSON.stringify({DeviceStatus: device.DeviceStatus})}`);
 
-        if (this.fsm.state === 'open' && device.DeviceStatus !== GarageDoorState.Open) {
-          this.resetDeviceState(device);
-        } else if (this.fsm.state === 'closed' && device.DeviceStatus !== GarageDoorState.Closed) {
-          this.resetDeviceState(device);
-        } else if (this.fsm.state === 'stuck' &&
-          (device.DeviceStatus === GarageDoorState.Open || device.DeviceStatus === GarageDoorState.Closed)) {
-          this.resetDeviceState(device);
-        }
+          if (this.fsm.state === 'open' && device.DeviceStatus !== GarageDoorState.Open) {
+            this.resetDeviceState(device);
+          } else if (this.fsm.state === 'closed' && device.DeviceStatus !== GarageDoorState.Closed) {
+            this.resetDeviceState(device);
+          } else if (this.fsm.state === 'stuck' &&
+            (device.DeviceStatus === GarageDoorState.Open || device.DeviceStatus === GarageDoorState.Closed)) {
+            this.resetDeviceState(device);
+          }
         } catch (e) {
           platform.log.error('Error while syncing with the API', e);
           this.fsm.stuck();
