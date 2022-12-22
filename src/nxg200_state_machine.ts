@@ -25,11 +25,21 @@ export const FSM = StateMachine.factory({
   methods: {
     onBeforeOpen: async function() {
       this.lastTransition = Date.now();
-      await this.nexxApiClient.open(this.deviceId, {AppVersion: '3.8.2', MobileDeviceUUID: this.platformUUID});
+      try {
+        await this.nexxApiClient.open(this.deviceId, {AppVersion: '3.8.2', MobileDeviceUUID: this.platformUUID});
+      } catch (e) {
+        this.log.error('Error while opening', e);
+        await this.stuck();
+      }
     },
     onBeforeClose: async function() {
       this.lastTransition = Date.now();
-      await this.nexxApiClient.close(this.deviceId, {AppVersion: '3.8.2', MobileDeviceUUID: this.platformUUID});
+      try {
+        await this.nexxApiClient.close(this.deviceId, {AppVersion: '3.8.2', MobileDeviceUUID: this.platformUUID});
+      } catch (e) {
+        this.log.error('Error while closing', e);
+        await this.stuck();
+      }
     },
     isTransitioning: function(): boolean {
       return (Date.now() - 12_000) <= this.lastTransition;
